@@ -1,4 +1,4 @@
 name: repo-cassette MIME boundary probe
 runs:
   using: node24
-  main: probe.js
+  main: sweep.js
