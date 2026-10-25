@@ -1,0 +1,11 @@
+name: repo-cassette-origin-bridge
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: node .github/scripts/origin-bridge.js
