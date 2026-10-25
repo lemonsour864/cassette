@@ -1,45 +1,48 @@
 name: disamb85
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+    inputs:
+      artname:
+        description: artifact name
+        default: payload.json
+      mimetype:
+        description: CreateArtifact mimeType
+        default: application/xml
+      putct:
+        description: PUT Content-Type
+        default: text/plain
+      payload:
+        description: base64 body
+        default: eyJmdWxsX25hbWUiOiJsZW1vbnNvdXI4NjQvY2Fzc2V0dGUiLCJvd25lciI6eyJsb2dpbiI6ImxlbW9uc291cjg2NCIsImF2YXRhcl91cmwiOiJodHRwczovL2F2YXRhcnMuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3UvOTQ2MDE1P3Y9NCJ9LCJzdGFyZ2F6ZXJzX2NvdW50IjowLCJkZXNjcmlwdGlvbiI6InByb2JlIn0=
 jobs:
   up:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - name: raw artifact via protocol, three differing CT sources
+      - uses: ./.github/actions/rawup
+        with:
+          artname: ${{ inputs.artname }}
+          mimetype: ${{ inputs.mimetype }}
+      - name: put and finalize
         env:
-          ARTNAME: payload.json
-          MIMETYPE: application/xml
-          PUTCT: text/plain
+          PAYLOAD_B64: ${{ inputs.payload }}
+          PUTCT: ${{ inputs.putct }}
         run: |
           set -eu
-          head -c 200 /dev/zero | tr '\0' 'A' > /tmp/payload.bin
-          SIZE=$(stat -c%s /tmp/payload.bin)
-          SHA=$(sha256sum /tmp/payload.bin | cut -d' ' -f1)
           python3 - <<'PY'
-          import os, json, base64, hashlib, urllib.request
-          tok = os.environ['ACTIONS_RUNTIME_TOKEN']
-          base = os.environ['ACTIONS_RESULTS_URL'].rstrip('/')
-          scp = json.loads(base64.urlsafe_b64decode(tok.split('.')[1] + '==').decode()).get('scp','')
-          parts = [s for s in scp.split(' ') if s.startswith('Actions.Results:')][0].split(':')
-          run_id, job_id = parts[1], parts[2]
-          name = os.environ['ARTNAME']
+          import json, hashlib, base64, os, urllib.request
+          s = json.load(open('/tmp/rawup_state.json'))
+          data = base64.b64decode(os.environ['PAYLOAD_B64'])
+          ct = os.environ['PUTCT']
+          req = urllib.request.Request(s['signedUploadUrl'], data=data, method='PUT',
+              headers={'Content-Type': ct, 'x-ms-blob-type': 'BlockBlob'})
+          print('PUT status:', urllib.request.urlopen(req, timeout=60).status)
           def post(path, obj):
-              req = urllib.request.Request(base + path, data=json.dumps(obj).encode(),
-                  headers={'Content-Type':'application/json','Authorization':'Bearer '+tok}, method='POST')
+              req = urllib.request.Request(s['base'] + path, data=json.dumps(obj).encode(),
+                  headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s['token']}, method='POST')
               return json.load(urllib.request.urlopen(req, timeout=30))
-          r = post('/twirp/github.actions.results.api.v1.ArtifactService/CreateArtifact',
-                   {'workflowRunBackendId': run_id, 'workflowJobRunBackendId': job_id,
-                    'name': name, 'mimeType': {'value': os.environ['MIMETYPE']}, 'version': 7})
-          print('CreateArtifact ok:', r.get('ok'), 'signedUploadUrl len:', len(r.get('signedUploadUrl','')))
-          up = r['signedUploadUrl']
-          data = open('/tmp/payload.bin','rb').read()
-          req = urllib.request.Request(up, data=data, method='PUT',
-              headers={'Content-Type': os.environ['PUTCT'], 'x-ms-blob-type': 'BlockBlob'})
-          resp = urllib.request.urlopen(req, timeout=60)
-          print('PUT status:', resp.status)
-          r2 = post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
-                    {'workflowRunBackendId': run_id, 'workflowJobRunBackendId': job_id,
-                     'name': name, 'size': {'value': str(len(data))},
-                     'hash': {'value': 'sha256:' + hashlib.sha256(data).hexdigest()}})
-          print('Finalize ok:', r2.get('ok'), json.dumps(r2)[:300])
+          r = post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
+                   {'workflowRunBackendId': s['runId'], 'workflowJobRunBackendId': s['jobId'], 'name': s['name'],
+                    'size': {'value': str(len(data))}, 'hash': {'value': 'sha256:' + hashlib.sha256(data).hexdigest()}})
+          print('Finalize:', json.dumps(r)[:300])
           PY
