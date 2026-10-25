@@ -111,6 +111,10 @@ function startOrigin(body) {
   });
 }
 
+function pause(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function cloudflared(port) {
   const binary = '/tmp/cloudflared-azurect';
   if (!fs.existsSync(binary)) {
@@ -167,6 +171,13 @@ async function uploadFromExternal(ctx, label, source, body, copyProperties) {
   const tunnel = await cloudflared(origin.port);
   console.log('TUNNEL ' + JSON.stringify({ ready: true, provider: 'trycloudflare' }));
   try {
+    let readiness = null;
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      readiness = await request(tunnel.base + '/safe');
+      if (readiness.status === 200) break;
+      await pause(2000);
+    }
+    console.log('READY_CHECK ' + JSON.stringify(readiness));
     for (const path of ['/safe', '/raw85', '/raw1f', '/utf8nel', '/utf8u0185']) {
       const source = tunnel.base + path;
       const observed = await request(source);
