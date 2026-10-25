@@ -1,4 +1,4 @@
-name: Azure SAS operations probe
+name: Wire MIME parser probe
 runs:
   using: node24
-  main: tunnel_action.js
+  main: wiremime_action.js
