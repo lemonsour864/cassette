@@ -1,0 +1,4 @@
+name: Azure SAS operations probe
+runs:
+  using: node24
+  main: sasops_action.js
