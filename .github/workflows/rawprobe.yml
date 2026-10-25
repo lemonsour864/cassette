@@ -1,0 +1,12 @@
+name: rawprobe
+on: [push, workflow_dispatch]
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: printf '{"full_name":"lemonsour864/cassette","owner":{"login":"lemonsour864","avatar_url":"https://avatars.githubusercontent.com/u/946015?v=4"},"stargazers_count":0,"description":"probe"}' > payload.json
+      - uses: actions/upload-artifact@v7
+        with:
+          path: payload.json
+          archive: false
