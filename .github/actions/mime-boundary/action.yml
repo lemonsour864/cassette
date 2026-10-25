@@ -1,4 +1,4 @@
 name: repo-cassette MIME boundary probe
 runs:
   using: node24
-  main: path-name.js
+  main: sequential.js
