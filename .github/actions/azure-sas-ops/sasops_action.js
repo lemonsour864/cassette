@@ -125,7 +125,7 @@ async function directInspects(target) {
   };
 }
 
-async function copyDestination(ctx, label, source, kind, extra = {}) {
+async function copyDestination(ctx, label, source, kind, body, extra = {}) {
   const item = await create(ctx, label, 7, 'application/json');
   const output = { label, create: item.made.status, hasUpload: Boolean(item.upload) };
   if (!item.upload) return output;
@@ -140,8 +140,15 @@ async function copyDestination(ctx, label, source, kind, extra = {}) {
   }
   const operation = await request(item.upload, { method: 'PUT', headers });
   output.operation = operation;
-  // Same-account tiny copies normally complete synchronously; one short poll covers Copy Blob.
-  output.inspect = await directInspects(item.upload);
+  // Register the copied blob so GetSignedArtifactURL gives us a read SAS.  Suppressing
+  // its v7 rsct then reveals the actual copied Content-Type property.
+  if (operation.status === 201 || operation.status === 202) {
+    const done = await finalize(ctx, item, body);
+    output.finalize = done.finalize;
+    output.artifactId = done.artifactId;
+    output.signedStatus = done.signedStatus;
+    if (done.download) output.inspect = await directInspects(done.download);
+  }
   return output;
 }
 
@@ -162,8 +169,10 @@ async function copyDestination(ctx, label, source, kind, extra = {}) {
     legacyOut.uploadSas = sasShape(legacy.upload);
     if (legacyOut.download) {
       legacyOut.downloadSas = sasShape(legacyOut.download);
-      legacyOut.directStored = await request(legacy.upload);
       legacyOut.signedResponse = await request(legacyOut.download);
+      legacyOut.signedOldHeader = await request(legacyOut.download,
+        { headers: { 'x-ms-version': '2009-09-19' } });
+      legacyOut.signedOldQuery = await request(append(legacyOut.download, 'api-version=2009-09-19'));
     }
   }
   console.log('SOURCE_LEGACY ' + JSON.stringify({ ...legacyOut, download: undefined }));
@@ -178,18 +187,23 @@ async function copyDestination(ctx, label, source, kind, extra = {}) {
       'x-ms-blob-type': 'BlockBlob', 'Content-Length': String(payloadNel.length),
     }, body: payloadNel });
     Object.assign(nelOut, await finalize(ctx, nel, payloadNel));
-    nelOut.directStored = await request(nel.upload);
+    if (nelOut.download) {
+      nelOut.signedResponse = await request(nelOut.download);
+      nelOut.signedOldHeader = await request(nelOut.download,
+        { headers: { 'x-ms-version': '2009-09-19' } });
+      nelOut.signedOldQuery = await request(append(nelOut.download, 'api-version=2009-09-19'));
+    }
   }
   console.log('SOURCE_NEL ' + JSON.stringify({ ...nelOut, download: undefined }));
 
-  if (legacyOut.download && nel.upload) {
+  if (legacyOut.download && nelOut.download) {
     const cases = [
-      ['pbf-legacy-default', legacyOut.download, 'put-from-url', {}],
-      ['pbf-legacy-copyprops', legacyOut.download, 'put-from-url', { sourceProperties: true }],
-      ['pbf-legacy-noprops', legacyOut.download, 'put-from-url', { sourceProperties: false }],
-      ['copy-legacy', legacyOut.download, 'copy', {}],
-      ['pbf-nel-stored', nel.upload, 'put-from-url', { sourceProperties: true }],
-      ['copy-nel-stored', nel.upload, 'copy', {}],
+      ['pbf-legacy-default', legacyOut.download, 'put-from-url', payloadLegacy, {}],
+      ['pbf-legacy-copyprops', legacyOut.download, 'put-from-url', payloadLegacy, { sourceProperties: true }],
+      ['pbf-legacy-noprops', legacyOut.download, 'put-from-url', payloadLegacy, { sourceProperties: false }],
+      ['copy-legacy', legacyOut.download, 'copy', payloadLegacy, {}],
+      ['pbf-nel-stored', nelOut.download, 'put-from-url', payloadNel, { sourceProperties: true }],
+      ['copy-nel-stored', nelOut.download, 'copy', payloadNel, {}],
     ];
     for (const args of cases) {
       try { console.log('COPY ' + JSON.stringify(await copyDestination(ctx, ...args))); }
