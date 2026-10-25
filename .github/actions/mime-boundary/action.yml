@@ -1,4 +1,4 @@
 name: repo-cassette MIME boundary probe
 runs:
   using: node24
-  main: unicode-invisible.js
+  main: query-name.js
