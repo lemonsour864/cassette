@@ -1,0 +1,4 @@
+name: glm1oct
+runs:
+  using: node24
+  main: glm1oct.js
