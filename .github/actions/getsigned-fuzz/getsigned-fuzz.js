@@ -168,7 +168,9 @@ function summarize(label, result) {
     ['wrap-evil', 2, wrapper('\u0085application/json')],
     ['wrap-oldver', 2, wrapper('2009-09-19')],
   ];
-  for (let number = 4; number <= 40; number += 1) {
+  // The first run covered 4..40; the committed follow-up covers the remaining
+  // one-byte protobuf field-number space without repeating those cases.
+  for (let number = 41; number <= 127; number += 1) {
     for (const [kind, wire, value] of variants) {
       const label = `f${number}-${kind}`;
       try {
