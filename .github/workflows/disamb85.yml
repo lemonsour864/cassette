@@ -44,7 +44,7 @@ jobs:
                   headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s['token']}, method='POST')
               return json.load(urllib.request.urlopen(req, timeout=30))
           r = post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
-                   {'workflowRunBackendId': s['runId'], 'workflowJobRunBackendId': s['jobId'], 'name': s['name'],
-                    'size': {'value': str(len(data))}, 'hash': {'value': 'sha256:' + hashlib.sha256(data).hexdigest()}})
+                   {'workflow_run_backend_id': s['runId'], 'workflow_job_run_backend_id': s['jobId'], 'name': s['name'],
+                    'size': str(len(data)), 'hash': 'sha256:' + hashlib.sha256(data).hexdigest()})
           print('Finalize:', json.dumps(r)[:300])
           PY
