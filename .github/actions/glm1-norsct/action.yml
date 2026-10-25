@@ -1,0 +1,4 @@
+name: glm1 norsct probe
+runs:
+  using: node24
+  main: probe.js
