@@ -20,3 +20,4 @@ jobs:
       - uses: ./.github/actions/pbf-header-inject
         env:
           BORE_PATH: /tmp/bore
+          EXTERNAL_ORIGIN: https://88bba6240d5d12.lhr.life
