@@ -81,6 +81,7 @@ async function binaryRpc(ctx, method, body) {
     method: 'POST',
     headers: { Authorization: `Bearer ${ctx.token}`, 'Content-Type': 'application/protobuf' },
     body,
+    signal: AbortSignal.timeout(15000),
   });
   const bytes = Buffer.from(await response.arrayBuffer());
   let signedUploadUrl = null;
@@ -104,6 +105,7 @@ async function rpc(ctx, method, fields) {
     headers: { Authorization: `Bearer ${ctx.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ workflow_run_backend_id: ctx.runId,
       workflow_job_run_backend_id: ctx.jobId, ...fields }),
+    signal: AbortSignal.timeout(15000),
   });
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
@@ -113,6 +115,7 @@ async function finish(ctx, name, uploadUrl, payload) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
     body: payload,
+    signal: AbortSignal.timeout(15000),
   });
   const finalized = await rpc(ctx, 'FinalizeArtifact', {
     name, size: String(payload.length),
@@ -145,26 +148,41 @@ async function finish(ctx, name, uploadUrl, payload) {
   for (let index = 0; index < cases.length; index += 1) {
     const [label, versions, mimes] = cases[index];
     const name = `protobuf-${index}-${Date.now()}.json`;
-    const result = await binaryRpc(ctx, 'CreateArtifact', createBody(ctx, name, versions, mimes));
-    const output = { label, create: result.status, contentType: result.contentType,
-      accepted: Boolean(result.signedUploadUrl), responseHex: result.responseHex };
-    if (result.signedUploadUrl) Object.assign(output, await finish(ctx, name, result.signedUploadUrl, payload));
-    console.log('PROTO ' + JSON.stringify(output));
+    console.log('START ' + label);
+    try {
+      const result = await binaryRpc(ctx, 'CreateArtifact', createBody(ctx, name, versions, mimes));
+      const output = { label, create: result.status, contentType: result.contentType,
+        accepted: Boolean(result.signedUploadUrl), responseHex: result.responseHex };
+      if (result.signedUploadUrl) Object.assign(output, await finish(ctx, name, result.signedUploadUrl, payload));
+      console.log('PROTO ' + JSON.stringify(output));
+    } catch (error) {
+      console.log('PROTO ' + JSON.stringify({ label, error: `${error.name}:${error.message}` }));
+    }
   }
 
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 3; index += 1) {
     const name = `race-${index}-${Date.now()}.json`;
-    const [legacy, raw] = await Promise.all([
-      rpc(ctx, 'CreateArtifact', { name, version: 6, mime_type: '\u0085application/json' }),
-      rpc(ctx, 'CreateArtifact', { name, version: 7, mime_type: 'application/json' }),
-    ]);
+    let legacy;
+    let raw;
+    try {
+      [legacy, raw] = await Promise.all([
+        rpc(ctx, 'CreateArtifact', { name, version: 6, mime_type: '\u0085application/json' }),
+        rpc(ctx, 'CreateArtifact', { name, version: 7, mime_type: 'application/json' }),
+      ]);
+    } catch (error) {
+      console.log('RACE ' + JSON.stringify({ index, error: `${error.name}:${error.message}` }));
+      continue;
+    }
     const legacyUrl = legacy.body.signed_upload_url || legacy.body.signedUploadUrl;
     const rawUrl = raw.body.signed_upload_url || raw.body.signedUploadUrl;
     const output = { index, legacy: legacy.status, raw: raw.status,
       legacyUrl: Boolean(legacyUrl), rawUrl: Boolean(rawUrl),
       sameBlob: Boolean(legacyUrl && rawUrl && new URL(legacyUrl).pathname === new URL(rawUrl).pathname) };
     const chosen = rawUrl || legacyUrl;
-    if (chosen) Object.assign(output, await finish(ctx, name, chosen, payload));
+    if (chosen) {
+      try { Object.assign(output, await finish(ctx, name, chosen, payload)); }
+      catch (error) { output.finishError = `${error.name}:${error.message}`; }
+    }
     console.log('RACE ' + JSON.stringify(output));
   }
 })().catch((error) => {
