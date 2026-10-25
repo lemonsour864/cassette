@@ -17,8 +17,10 @@ on:
 jobs:
   up:
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      contents: read
     steps:
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/rawup
         with:
           artname: ${{ inputs.artname }}
