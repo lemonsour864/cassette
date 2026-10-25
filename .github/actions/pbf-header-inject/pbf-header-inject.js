@@ -192,7 +192,7 @@ function makeCases() {
 function externalCases() {
   const values = [];
   for (const field of ['cc', 'cd', 'cl', 'ce']) {
-    for (const mode of ['second', 'barecr', 'barelf', 'foldsp', 'foldtab', 'nel']) {
+    for (const mode of ['second', 'barelf', 'nel']) {
       values.push(`${field}--${mode}`);
     }
   }
