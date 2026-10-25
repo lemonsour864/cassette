@@ -74,7 +74,7 @@ function compactList(result) {
 
 async function list(ctx, name) {
   return compactList(await rpc(ctx, 'ListArtifacts', {
-    name_filter: { value: name },
+    name_filter: name,
   }));
 }
 
@@ -90,13 +90,17 @@ async function signed(ctx, name, legacyUrl, rawUrl) {
     blobKey(url) === blobKey(rawUrl) ? 'raw' : 'other';
   output.rsctCodepoints = Array.from(new URL(url).searchParams.get('rsct') || '',
     (char) => char.codePointAt(0).toString(16)).join(',');
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  const body = Buffer.from(await response.arrayBuffer());
-  output.get = response.status;
-  output.contentTypeHex = Buffer.from(response.headers.get('content-type') || '', 'latin1').toString('hex');
-  output.body = body.toString('utf8').slice(0, 160);
-  output.bodySha = crypto.createHash('sha256').update(body).digest('hex');
-  output.bodyLength = body.length;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const body = Buffer.from(await response.arrayBuffer());
+    output.get = response.status;
+    output.contentTypeHex = Buffer.from(response.headers.get('content-type') || '', 'latin1').toString('hex');
+    output.body = body.toString('utf8').slice(0, 160);
+    output.bodySha = crypto.createHash('sha256').update(body).digest('hex');
+    output.bodyLength = body.length;
+  } catch (error) {
+    output.getError = `${error.name}:${error.message}`;
+  }
   return output;
 }
 
