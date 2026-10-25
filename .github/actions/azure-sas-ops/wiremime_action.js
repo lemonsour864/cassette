@@ -388,6 +388,23 @@ function jsonCases(ctx) {
     ['trailing-nul-body', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x00])])],
     ['trailing-1c-body', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x1c])])],
     ['trailing-second-object', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from('{}')])],
+    ['tailprobe-raw85', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x85])])],
+    ['tailprobe-utf8-u0085', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0xc2, 0x85])])],
+    ['tailprobe-overlong3-u0085', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0xe0, 0x82, 0x85])])],
+    ['tailprobe-control-1d', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x1d])])],
+    ['tailprobe-control-1e', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x1e])])],
+    ['tailprobe-control-1f', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from([0x1f])])],
+    ['tailprobe-ascii-garbage', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`), Buffer.from('XYZ')])],
+    ['tailprobe-second-evil-object', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`),
+      Buffer.from(`{"version":7,"mime_type":${evil}}`)])],
+    ['tailprobe-evil-fragment', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`),
+      Buffer.from(`,"mime_type":${evil}`)])],
+    ['tailprobe-u0085-then-evil-object', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${safe}`),
+      Buffer.from([0xc2, 0x85]), Buffer.from(`{"version":7,"mime_type":${evil}}`)])],
+    ['tailprobe-first-evil-second-safe', 'application/json', (name) => Buffer.concat([ordinary(name, `"version":7,"mime_type":${evil}`),
+      ordinary(name + '-ignored', `"version":7,"mime_type":${safe}`)])],
+    ['tailprobe-first-missing-second-safe', 'application/json', (name) => Buffer.concat([ordinary(name, '"version":7'),
+      ordinary(name + '-ignored', `"version":7,"mime_type":${safe}`)])],
     ['field-order-mime-before-version', 'application/json', (name) => ordinary(name, `"mime_type":${safe},"version":7`)],
     ['charset-content-type', 'application/json; charset=utf-8', (name) => ordinary(name, `"version":7,"mime_type":${safe}`)],
     ['compact-charset-content-type', 'application/json;charset=UTF-8', (name) => ordinary(name, `"version":7,"mime_type":${safe}`)],
@@ -402,8 +419,9 @@ function jsonCases(ctx) {
   const stamp = `${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
   let sequence = 0;
   const accepted = [];
+  const mode = process.env.WIRE_MODE || 'all';
 
-  for (const item of binaryCases()) {
+  for (const item of mode === 'all' ? binaryCases() : []) {
     const [label, extra, versionBytes] = item;
     const name = `wire-b-${stamp}-${sequence++}.json`;
     const result = await createBinary(ctx, name, extra, versionBytes);
@@ -420,7 +438,10 @@ function jsonCases(ctx) {
     console.log('WIRE_CASE ' + JSON.stringify(output));
   }
 
-  for (const [label, contentType, makeBody] of jsonCases(ctx)) {
+  const selectedJsonCases = mode === 'tailprobe'
+    ? jsonCases(ctx).filter(([label]) => label.startsWith('tailprobe-'))
+    : jsonCases(ctx);
+  for (const [label, contentType, makeBody] of selectedJsonCases) {
     const name = `wire-j-${stamp}-${sequence++}.json`;
     const body = makeBody(name);
     const result = await createJson(ctx, name, body, contentType);
