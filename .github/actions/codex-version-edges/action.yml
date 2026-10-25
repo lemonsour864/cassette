@@ -1,0 +1,4 @@
+name: protobuf version edge probe
+runs:
+  using: node24
+  main: edge.js
