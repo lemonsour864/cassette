@@ -1,0 +1,13 @@
+name: Cross-job artifact identity probe
+description: Tests record selection across Actions jobs and canonical-looking names
+inputs:
+  role:
+    required: true
+  target:
+    required: false
+outputs:
+  state:
+    description: Non-secret producer state
+runs:
+  using: node20
+  main: index.js
