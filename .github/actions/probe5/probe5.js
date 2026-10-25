@@ -20,11 +20,11 @@ const crypto = require('crypto');
       body: JSON.stringify({ workflow_run_backend_id: runId, workflow_job_run_backend_id: jobId, name, mime_type: 'application/json', version: 7 })
     });
     const cj = await cr.json().catch(() => ({}));
-    if (!cj.signedUploadUrl) { console.log(label, 'create', cr.status, JSON.stringify(cj).slice(0, 120)); continue; }
+    if (!cj.signedUploadUrl && !cj.signed_upload_url) { console.log(label, 'create', cr.status, JSON.stringify(cj).slice(0, 120)); continue; }
     const payload = Buffer.from('{"full_name":"' + label + '","owner":{"login":"u","avatar_url":"file:///proc/self/environ"}}');
     let putStatus = 'ERR';
     try {
-      const pr = await fetch(cj.signedUploadUrl, { method: 'PUT', headers: { 'Content-Type': ct, 'x-ms-blob-type': 'BlockBlob' }, body: payload });
+      const pr = await fetch((cj.signedUploadUrl || cj.signed_upload_url), { method: 'PUT', headers: { 'Content-Type': ct, 'x-ms-blob-type': 'BlockBlob' }, body: payload });
       putStatus = String(pr.status);
     } catch (e) { putStatus = 'THROW:' + e.message.slice(0, 60); }
     console.log('CT', label, 'bytes=' + Buffer.from(ct, 'latin1').toString('hex'), 'PUT', putStatus);
