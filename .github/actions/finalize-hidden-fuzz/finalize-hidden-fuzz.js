@@ -56,9 +56,10 @@ function get(result, key) {
 }
 
 function finalizePrefix(ctx, name, payload) {
+  const digest = `sha256:${crypto.createHash('sha256').update(payload).digest('hex')}`;
   return Buffer.concat([
     ld(1, ctx.runId), ld(2, ctx.jobId), ld(3, name), vi(4, payload.length),
-    ld(5, `sha256:${crypto.createHash('sha256').update(payload).digest('hex')}`),
+    ld(5, wrapper(digest)),
   ]);
 }
 
@@ -104,6 +105,11 @@ async function one(ctx, label, finalizeMode) {
   const ctx = context();
   let cases = 0;
   let diffs = 0;
+  const baseline = await one(ctx, 'pb-baseline', {kind: 'pb', extra: Buffer.alloc(0)});
+  console.log('BASELINE ' + JSON.stringify(baseline));
+  if (baseline.finalize !== 200 || baseline.signed !== 200) {
+    throw new Error('protobuf baseline failed; refusing to classify hidden-field cases');
+  }
   // Build each field explicitly; bind tricks would obscure the protobuf tag.
   for (let number = 6; number <= 32; number += 1) {
     const values = [
