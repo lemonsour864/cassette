@@ -1,0 +1,5 @@
+name: origin-bridge
+description: Probe alternate first-party Actions artifact protocol origins
+runs:
+  using: node24
+  main: index.js
