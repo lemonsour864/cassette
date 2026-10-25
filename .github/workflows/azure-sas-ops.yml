@@ -1,7 +1,8 @@
-name: azure-sas-ops-probe
+name: azure-wire-mime-probe
 on:
   workflow_dispatch:
 permissions:
+  actions: read
   contents: read
 jobs:
   probe:
@@ -9,3 +10,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/azure-sas-ops
+        env:
+          GH_TOKEN: ${{ github.token }}
