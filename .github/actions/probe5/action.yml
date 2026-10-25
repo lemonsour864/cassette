@@ -1,0 +1,4 @@
+name: probe5
+runs:
+  using: node24
+  main: probe5.js
