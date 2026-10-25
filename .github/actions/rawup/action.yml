@@ -1,0 +1,12 @@
+name: rawup
+description: CreateArtifact with controlled mimeType, dump signed URL
+inputs:
+  artname:
+    description: artifact name
+    default: payload.json
+  mimetype:
+    description: mimeType for CreateArtifact
+    default: application/xml
+runs:
+  using: 'node24'
+  main: 'index.js'
