@@ -17,7 +17,7 @@ function pause(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function rpc(ctx, method, fields, ids = {}) {
+async function rpc(ctx, method, fields, ids = {}, timeout = 15000) {
   const response = await fetch(ctx.base + SERVICE + method, {
     method: 'POST',
     headers: { Authorization: `Bearer ${ctx.token}`, 'Content-Type': 'application/json' },
@@ -26,7 +26,7 @@ async function rpc(ctx, method, fields, ids = {}) {
       workflow_job_run_backend_id: ids.jobId || ctx.jobId,
       ...fields,
     }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeout),
   });
   const text = await response.text();
   let body = {};
@@ -78,7 +78,7 @@ async function list(ctx, name) {
   }));
 }
 
-async function signed(ctx, name, legacyUrl, rawUrl) {
+async function signed(ctx, name, legacyUrl, rawUrl, fetchBody = true) {
   const result = await rpc(ctx, 'GetSignedArtifactURL', { name });
   const url = downloadUrl(result);
   const output = {
@@ -90,6 +90,7 @@ async function signed(ctx, name, legacyUrl, rawUrl) {
     blobKey(url) === blobKey(rawUrl) ? 'raw' : 'other';
   output.rsctCodepoints = Array.from(new URL(url).searchParams.get('rsct') || '',
     (char) => char.codePointAt(0).toString(16)).join(',');
+  if (!fetchBody) return output;
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
     const body = Buffer.from(await response.arrayBuffer());
@@ -145,12 +146,13 @@ async function collision(ctx, index, config) {
   if (config.uploadLegacy) output.legacyUpload = await put(legacyUrl, legacyBody);
   if (config.uploadRaw) output.rawUpload = await put(rawUrl, rawBody);
   output.listBefore = await list(ctx, name);
-  output.signedBefore = await signed(ctx, name, legacyUrl, rawUrl);
+  output.signedBefore = await signed(ctx, name, legacyUrl, rawUrl,
+    config.uploadLegacy && config.uploadRaw);
   const finalized = await rpc(ctx, 'FinalizeArtifact', {
     name,
     size: String(selectedBody.length),
     hash: `sha256:${crypto.createHash('sha256').update(selectedBody).digest('hex')}`,
-  });
+  }, {}, 60000);
   output.finalize = compactRpc(finalized);
   output.listAfter = await list(ctx, name);
   output.signedAfter = await signed(ctx, name, legacyUrl, rawUrl);
