@@ -3,8 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       specs:
-        description: JSON array of {v, mime}
+        description: JSON array of {name, v, mime}
         default: '[]'
+      putct:
+        description: PUT Content-Type
+        default: application/json
 jobs:
   up:
     runs-on: ubuntu-latest
@@ -15,33 +18,20 @@ jobs:
       - uses: ./.github/actions/rawup
         with:
           specs: ${{ inputs.specs }}
-      - name: re-put payloads
+          putct: ${{ inputs.putct }}
+      - name: put payloads (skip finalize)
         run: |
           set -eu
           python3 - <<'PY'
-          import json, hashlib, urllib.request
+          import json, urllib.request
           s = json.load(open('/tmp/rawup_state.json'))
-          def post(path, obj):
-              req = urllib.request.Request(s['base'] + path, data=json.dumps(obj).encode(),
-                  headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s['token']}, method='POST')
-              return json.load(urllib.request.urlopen(req, timeout=30))
           for a in s['artifacts']:
               if not a.get('created'): continue
-              X = a['artifactId']
-              repo_str = 'a/../../repos/lemonsour864/cassette/actions/artifacts/%s/zip' % X
-              P = json.dumps({"full_name": repo_str,
+              P = json.dumps({"full_name": "lemonsour864/cassette",
                               "owner": {"login": "lemonsour864", "avatar_url": "file:///proc/self/environ"},
                               "stargazers_count": 0, "description": "probe"},
                              separators=(',', ':')).encode()
               req = urllib.request.Request(a['up'], data=P, method='PUT',
-                  headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
-              st = urllib.request.urlopen(req, timeout=60).status
-              fin = 'ok'
-              try:
-                  post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
-                       {'workflow_run_backend_id': s['runId'], 'workflow_job_run_backend_id': s['jobId'], 'name': a['name'],
-                        'size': str(len(P)), 'hash': 'sha256:' + hashlib.sha256(P).hexdigest()})
-              except Exception as e:
-                  fin = 'failed: %s' % e
-              print('SPEC', a['i'], 'id', X, 'reput', st, 'fin2', fin)
+                  headers={'Content-Type': s['putct'], 'x-ms-blob-type': 'BlockBlob'})
+              print('SPEC', a['i'], 'name', repr(a['name']), 'PUT:', urllib.request.urlopen(req, timeout=60).status)
           PY
