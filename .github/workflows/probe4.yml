@@ -1,0 +1,21 @@
+name: probe4
+on:
+  workflow_dispatch:
+    inputs:
+      specs:
+        description: mime candidates
+        default: '[]'
+      putcts:
+        description: put ct specs
+        default: '[]'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/probe4
+        with:
+          specs: ${{ inputs.specs }}
+          putcts: ${{ inputs.putcts }}
