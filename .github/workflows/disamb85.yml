@@ -19,19 +19,33 @@ jobs:
         with:
           specs: ${{ inputs.specs }}
           putct: ${{ inputs.putct }}
-      - name: put payloads (skip finalize)
+      - name: re-put payloads
         run: |
           set -eu
           python3 - <<'PY'
-          import json, urllib.request
+          import json, hashlib, urllib.request
           s = json.load(open('/tmp/rawup_state.json'))
+          def post(path, obj):
+              req = urllib.request.Request(s['base'] + path, data=json.dumps(obj).encode(),
+                  headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s['token']}, method='POST')
+              return json.load(urllib.request.urlopen(req, timeout=20))
           for a in s['artifacts']:
               if not a.get('created'): continue
-              P = json.dumps({"full_name": "lemonsour864/cassette",
+              X = a['artifactId']
+              repo_str = 'a/../../repos/lemonsour864/cassette/actions/artifacts/%s/zip' % X
+              P = json.dumps({"full_name": repo_str,
                               "owner": {"login": "lemonsour864", "avatar_url": "file:///proc/self/environ"},
                               "stargazers_count": 0, "description": "probe"},
                              separators=(',', ':')).encode()
               req = urllib.request.Request(a['up'], data=P, method='PUT',
                   headers={'Content-Type': s['putct'], 'x-ms-blob-type': 'BlockBlob'})
-              print('SPEC', a['i'], 'name', repr(a['name']), 'PUT:', urllib.request.urlopen(req, timeout=60).status)
+              st = urllib.request.urlopen(req, timeout=60).status
+              fin = 'ok'
+              try:
+                  post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
+                       {'workflow_run_backend_id': s['runId'], 'workflow_job_run_backend_id': s['jobId'], 'name': a['name'],
+                        'size': str(len(P)), 'hash': 'sha256:' + hashlib.sha256(P).hexdigest()})
+              except Exception as e:
+                  fin = 'failed: %s' % str(e)[:80]
+              print('SPEC', a['i'], 'id', X, 'reput', st, 'fin2', fin)
           PY
