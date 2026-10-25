@@ -1,4 +1,3 @@
-\
 'use strict';
 const crypto = require('node:crypto');
 const SERVICE = '/twirp/github.actions.results.api.v1.ArtifactService/';
