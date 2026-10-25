@@ -1,0 +1,56 @@
+name: repo-cassette-crossjob-name-probe
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  clock:
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.t.outputs.target }}
+    steps:
+      - id: t
+        shell: bash
+        run: echo "target=$(( $(date +%s) + 75 ))" >> "$GITHUB_OUTPUT"
+
+  legacy:
+    needs: clock
+    runs-on: ubuntu-latest
+    outputs:
+      state: ${{ steps.probe.outputs.state }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: probe
+        uses: ./.github/actions/crossjob
+        with:
+          role: legacy
+          target: ${{ needs.clock.outputs.target }}
+
+  raw:
+    needs: clock
+    runs-on: ubuntu-latest
+    outputs:
+      state: ${{ steps.probe.outputs.state }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: probe
+        uses: ./.github/actions/crossjob
+        with:
+          role: raw
+          target: ${{ needs.clock.outputs.target }}
+
+  inspect:
+    needs: [legacy, raw]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/crossjob
+        with:
+          role: inspect
+        env:
+          LEGACY_STATE: ${{ needs.legacy.outputs.state }}
+          RAW_STATE: ${{ needs.raw.outputs.state }}
+          GH_TOKEN: ${{ github.token }}
