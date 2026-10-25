@@ -8,4 +8,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: node .github/scripts/origin-bridge.js
+      - uses: ./.github/actions/origin-bridge
