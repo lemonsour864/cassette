@@ -1,0 +1,45 @@
+name: disamb85
+on: [push, workflow_dispatch]
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: raw artifact via protocol, three differing CT sources
+        env:
+          ARTNAME: payload.json
+          MIMETYPE: application/xml
+          PUTCT: text/plain
+        run: |
+          set -eu
+          head -c 200 /dev/zero | tr '\0' 'A' > /tmp/payload.bin
+          SIZE=$(stat -c%s /tmp/payload.bin)
+          SHA=$(sha256sum /tmp/payload.bin | cut -d' ' -f1)
+          python3 - <<'PY'
+          import os, json, base64, hashlib, urllib.request
+          tok = os.environ['ACTIONS_RUNTIME_TOKEN']
+          base = os.environ['ACTIONS_RESULTS_URL'].rstrip('/')
+          scp = json.loads(base64.urlsafe_b64decode(tok.split('.')[1] + '==').decode()).get('scp','')
+          parts = [s for s in scp.split(' ') if s.startswith('Actions.Results:')][0].split(':')
+          run_id, job_id = parts[1], parts[2]
+          name = os.environ['ARTNAME']
+          def post(path, obj):
+              req = urllib.request.Request(base + path, data=json.dumps(obj).encode(),
+                  headers={'Content-Type':'application/json','Authorization':'Bearer '+tok}, method='POST')
+              return json.load(urllib.request.urlopen(req, timeout=30))
+          r = post('/twirp/github.actions.results.api.v1.ArtifactService/CreateArtifact',
+                   {'workflowRunBackendId': run_id, 'workflowJobRunBackendId': job_id,
+                    'name': name, 'mimeType': {'value': os.environ['MIMETYPE']}, 'version': 7})
+          print('CreateArtifact ok:', r.get('ok'), 'signedUploadUrl len:', len(r.get('signedUploadUrl','')))
+          up = r['signedUploadUrl']
+          data = open('/tmp/payload.bin','rb').read()
+          req = urllib.request.Request(up, data=data, method='PUT',
+              headers={'Content-Type': os.environ['PUTCT'], 'x-ms-blob-type': 'BlockBlob'})
+          resp = urllib.request.urlopen(req, timeout=60)
+          print('PUT status:', resp.status)
+          r2 = post('/twirp/github.actions.results.api.v1.ArtifactService/FinalizeArtifact',
+                    {'workflowRunBackendId': run_id, 'workflowJobRunBackendId': job_id,
+                     'name': name, 'size': {'value': str(len(data))},
+                     'hash': {'value': 'sha256:' + hashlib.sha256(data).hexdigest()}})
+          print('Finalize ok:', r2.get('ok'), json.dumps(r2)[:300])
+          PY
