@@ -1,0 +1,4 @@
+name: Repo Cassette PBF copied-header injection probe
+runs:
+  using: node24
+  main: pbf-header-inject.js
