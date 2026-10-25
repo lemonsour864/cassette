@@ -189,6 +189,16 @@ function makeCases() {
   return cases;
 }
 
+function externalCases() {
+  const values = [];
+  for (const field of ['cc', 'cd', 'cl', 'ce']) {
+    for (const mode of ['second', 'barecr', 'barelf', 'foldsp', 'foldtab', 'nel']) {
+      values.push(`${field}--${mode}`);
+    }
+  }
+  return new Map(values.map((value) => [value, Buffer.alloc(0)]));
+}
+
 function startOrigin(cases, state) {
   const server = net.createServer((socket) => {
     let request = Buffer.alloc(0);
@@ -240,9 +250,11 @@ function startBore(localPort) {
 async function one(ctx, tunnel, state, label) {
   const name = `pbf-header-${label}-${Date.now()}.json`.slice(0, 240);
   state.body = PLACEHOLDER;
-  const sourceUrl = `http://${tunnel.host}:${tunnel.port}/${encodeURIComponent(label)}`;
-  const source = await rawSocketGet(tunnel.host, tunnel.port, `/${encodeURIComponent(label)}`);
-  const sourceSummary = source.raw ? rawSummary(source.raw) : {error: source.error};
+  const sourceUrl = tunnel.base
+    ? `${tunnel.base}/${encodeURIComponent(label)}`
+    : `http://${tunnel.host}:${tunnel.port}/${encodeURIComponent(label)}`;
+  const source = tunnel.base ? {} : await rawSocketGet(tunnel.host, tunnel.port, `/${encodeURIComponent(label)}`);
+  const sourceSummary = tunnel.base ? {external: true} : (source.raw ? rawSummary(source.raw) : {error: source.error});
   const made = await rpc(ctx, 'CreateArtifact', {name, version: 7, mime_type: 'application/json'});
   const upload = get(made, 'signed_upload_url');
   const output = {label, source: sourceSummary, create: made.status, hasUpload: Boolean(upload)};
@@ -274,8 +286,9 @@ async function one(ctx, tunnel, state, label) {
       full_name: `a/../../repos/lemonsour864/cassette/actions/artifacts/${output.artifactId}/zip`,
       owner: {login: 'u', avatar_url: 'file:///proc/self/environ'},
     }));
+    const weaponUrl = `${sourceUrl}?artifact=${output.artifactId}`;
     const weaponCopy = await azureRequest(upload, {method: 'PUT', headers: {
-      'Content-Length': '0', 'x-ms-version': '2021-08-06', 'x-ms-copy-source': sourceUrl,
+      'Content-Length': '0', 'x-ms-version': '2021-08-06', 'x-ms-copy-source': weaponUrl,
       'x-ms-blob-type': 'BlockBlob', 'x-ms-copy-source-blob-properties': 'true'}});
     output.weapon = {copy: weaponCopy, length: state.body.length,
       sha: crypto.createHash('sha256').update(state.body).digest('hex')};
@@ -287,11 +300,13 @@ async function one(ctx, tunnel, state, label) {
 
 (async () => {
   const ctx = context();
-  const cases = makeCases();
+  const cases = process.env.EXTERNAL_ORIGIN ? externalCases() : makeCases();
   const state = {body: PLACEHOLDER};
-  const origin = await startOrigin(cases, state);
-  const tunnel = await startBore(origin.port);
-  console.log('TUNNEL ' + JSON.stringify({ready: true, provider: 'bore', cases: cases.size}));
+  const origin = process.env.EXTERNAL_ORIGIN ? null : await startOrigin(cases, state);
+  const tunnel = process.env.EXTERNAL_ORIGIN
+    ? {base: process.env.EXTERNAL_ORIGIN.replace(/\/$/, '')}
+    : await startBore(origin.port);
+  console.log('TUNNEL ' + JSON.stringify({ready: true, provider: tunnel.base ? 'external' : 'bore', cases: cases.size}));
   let usefulCount = 0;
   try {
     for (const label of cases.keys()) {
@@ -300,8 +315,8 @@ async function one(ctx, tunnel, state, label) {
       console.log('CASE ' + JSON.stringify(result));
     }
   } finally {
-    tunnel.child.kill('SIGTERM');
-    origin.server.close();
+    if (tunnel.child) tunnel.child.kill('SIGTERM');
+    if (origin) origin.server.close();
   }
   console.log('DONE ' + JSON.stringify({cases: cases.size, useful: usefulCount}));
 })().catch((error) => {
