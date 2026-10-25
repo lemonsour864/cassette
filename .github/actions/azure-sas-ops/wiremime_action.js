@@ -285,6 +285,16 @@ function binaryCases() {
     ['control-safe', mime(SAFE)],
     ['outer-evil-safe', Buffer.concat([mime(UTF8_NEL), mime(SAFE)])],
     ['outer-safe-evil', Buffer.concat([mime(SAFE), mime(UTF8_NEL)])],
+    ['invaliddup-outer-raw85-safe', Buffer.concat([mime(RAW85), mime(SAFE)])],
+    ['invaliddup-outer-safe-raw85', Buffer.concat([mime(SAFE), mime(RAW85)])],
+    ['invaliddup-inner-raw85-safe', outerWrapper(Buffer.concat([innerString(RAW85), innerString(SAFE)]))],
+    ['invaliddup-inner-safe-raw85', outerWrapper(Buffer.concat([innerString(SAFE), innerString(RAW85)]))],
+    ['invaliddup-outer-overlong3-safe', Buffer.concat([mime(Buffer.concat([Buffer.from([0xe0, 0x82, 0x85]), SAFE])), mime(SAFE)])],
+    ['invaliddup-outer-safe-overlong3', Buffer.concat([mime(SAFE), mime(Buffer.concat([Buffer.from([0xe0, 0x82, 0x85]), SAFE]))])],
+    ['invaliddup-outer-nul-safe', Buffer.concat([mime(Buffer.concat([Buffer.from([0x00]), SAFE])), mime(SAFE)])],
+    ['invaliddup-outer-safe-nul', Buffer.concat([mime(SAFE), mime(Buffer.concat([Buffer.from([0x00]), SAFE]))])],
+    ['invaliddup-outer-control1c-safe', Buffer.concat([mime(Buffer.concat([Buffer.from([0x1c]), SAFE])), mime(SAFE)])],
+    ['invaliddup-outer-safe-control1c', Buffer.concat([mime(SAFE), mime(Buffer.concat([Buffer.from([0x1c]), SAFE]))])],
     ['outer-safe-empty-wrapper', Buffer.concat([mime(SAFE), outerWrapper(Buffer.alloc(0))])],
     ['outer-empty-wrapper-safe', Buffer.concat([outerWrapper(Buffer.alloc(0)), mime(SAFE)])],
     ['outer-safe-unknown-wrapper-raw85', Buffer.concat([mime(SAFE), outerWrapper(unknownInner)])],
@@ -421,7 +431,10 @@ function jsonCases(ctx) {
   const accepted = [];
   const mode = process.env.WIRE_MODE || 'all';
 
-  for (const item of mode === 'all' ? binaryCases() : []) {
+  const selectedBinaryCases = mode === 'all'
+    ? binaryCases()
+    : mode === 'invaliddup' ? binaryCases().filter(([label]) => label.startsWith('invaliddup-')) : [];
+  for (const item of selectedBinaryCases) {
     const [label, extra, versionBytes] = item;
     const name = `wire-b-${stamp}-${sequence++}.json`;
     const result = await createBinary(ctx, name, extra, versionBytes);
@@ -440,7 +453,7 @@ function jsonCases(ctx) {
 
   const selectedJsonCases = mode === 'tailprobe'
     ? jsonCases(ctx).filter(([label]) => label.startsWith('tailprobe-'))
-    : jsonCases(ctx);
+    : mode === 'all' ? jsonCases(ctx) : [];
   for (const [label, contentType, makeBody] of selectedJsonCases) {
     const name = `wire-j-${stamp}-${sequence++}.json`;
     const body = makeBody(name);
